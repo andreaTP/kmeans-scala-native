@@ -191,7 +191,7 @@ object Main {
       ((((!after).tv_sec - (!before).tv_sec) * 1000) +
       (((!after).tv_usec - (!before).tv_usec) / 1000)) / executions
 
-    fprintf(stdout, c"da qui %d\n", res)
+    fprintf(stdout, c"Average time is %d ms\n", res)
 
   }
 }

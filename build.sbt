@@ -20,6 +20,6 @@ scala.scalanative.sbtplugin.ScalaNativePlugin.projectSettings
 
 nativeVerbose := true
 
-nativeClangOptions ++= Seq("-O3")
+nativeClangOptions ++= Seq("-O3", "-lm")
 
 //nativeEmitDependencyGraphPath := Some(file("out.dot"))
