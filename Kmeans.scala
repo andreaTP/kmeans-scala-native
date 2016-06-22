@@ -1,3 +1,4 @@
+
 import scalanative.native._
 import scalanative.libc.stdlib._
 import scala.math.sqrt
@@ -17,36 +18,51 @@ class Point(val x: Double = 0, val y: Double = 0) {
 
 @link("jansson")
 @extern object Jansson {
-  @extern class json_type
-  /*typedef enum {
-      JSON_OBJECT,
-      JSON_ARRAY,
-      JSON_STRING,
-      JSON_INTEGER,
-      JSON_REAL,
-      JSON_TRUE,
-      JSON_FALSE,
-      JSON_NULL
-  } json_type;*/
-
+  // in C enums become ints at runtime
+  type json_type = Int
 
   @struct
-  class json_t(val typ: json_type = null,val refcount: Int = 0)
+  class json_t(
+    val typ: json_type = 0,
+    val refcount: CInt = 0
+  )
 
   @struct
-  class json_error_t(val line: Int = 0,
-    val column: Int = 0,
-    val position: Int = 0,
-    val source: Ptr[Char] = null,
-    val text: Ptr[Char] = null)
+  class json_error_t(
+    val line: CInt = 0,
+    val column: CInt = 0,
+    val position: CInt = 0
+    // can't express source field due to #35
+    // can't express test field due to #35
+  )
 
-  def json_load_file(path: Ptr[Byte], flags: Int, error: Ptr[json_error_t]): Ptr[json_t] = extern
+  def json_load_file(path: Ptr[Byte], flags: CSize,
+      error: Ptr[json_error_t]): Ptr[json_t] = extern
+
+  def json_array_get(array: Ptr[json_t], index: CInt): Ptr[json_t] = extern
+
+  def json_number_value(json: Ptr[json_t]): CDouble = extern
 }
+
+@name("sys/time")
+@extern object SysTime {
+
+  @struct
+  class timeval(
+    val tv_sec: CLong = 0L,
+    val tv_usec: CLong = 0L
+  )
+
+  def gettimeofday(tp: Ptr[timeval], tzp: Ptr[_]): CInt = extern
+}
+
 import Jansson._
+import SysTime._
 
 object Main {
   final val n = 10
   final val iters = 15
+  final val executions = 100
 
   def dist(x: Point, y: Point) = (x - y).modulus
 
@@ -112,44 +128,70 @@ object Main {
   }
 
   def main(args: Array[String]): Unit = {
+    var error = malloc(512).cast[Ptr[json_error_t]]
 
-    val points = malloc(sizeof[Point] * 10).cast[Ptr[Point]]
+    val json = json_load_file(c"points.json", 0, error)
+
+    if ((!json).typ != 1) {
+      fprintf(stdout, c"Error parsing Json file")
+      return
+    }
+
+    val xs = malloc(sizeof[Point] * 100000).cast[Ptr[Point]]
     var i = 0
-    while( i < 10) {
-      points(i) = new Point(i,i)
-      i += 1
-    }
 
-    var centroids = malloc(sizeof[Point] * 2).cast[Ptr[Point]]
+    while (i < 100000) {
+      val value = json_array_get(json, i)
+      val x = json_number_value(json_array_get(value,0))
+      val y = json_number_value(json_array_get(value,1))
 
-    i = 0
-    while( i < 2) {
-      centroids(i) = new Point(points(i).x, points(i).y)
-      i += 1
-    }
+      xs(i) = new Point(x, y)
 
-    fprintf(stdout, c"init\n")
-
-    i = 0
-    while( i < 10 ) {
-      centroids = clusters(points, centroids, 10, 2)
       i+=1
     }
 
-    val res = centroids
+    var centroids = malloc(sizeof[Point] * n).cast[Ptr[Point]]
 
-    fprintf(stdout, c"C0 x %f  ", res(0).x)
-    fprintf(stdout, c"   y %f\n", res(0).y)
-    fprintf(stdout, c"C1 x %f  ", res(1).x)
-    fprintf(stdout, c"   y %f\n", res(1).y)
+    val before = malloc(sizeof[timeval]).cast[Ptr[timeval]]
+    val after = malloc(sizeof[timeval]).cast[Ptr[timeval]]
 
-    fprintf(stdout, c"end\n")
+    gettimeofday(before, null)
 
+    var j = 0
+    while (j < executions) {
 
-    var error = malloc(sizeof[json_error_t]).cast[Ptr[json_error_t]]
+      i = 0
+      while(i < n) {
+        centroids(i) = new Point(xs(i).x, xs(i).y)
+        i+=1
+      }
 
-    val json = json_load_file(c"/home/andrea/workspace/kmeans/points.json", 0, error)
-    fprintf(stdout, c"does it crash? %d", json)
+      i = 0
+      while(i < iters) {
+        centroids = clusters(xs, centroids, 100000, n)
+        i+=1
+      }
+
+      /*
+      if (j+1 == executions) {
+        i = n
+        while (i > 0) {
+          i-=1
+          fprintf(stdout, c"centroid %d  (%f ,", centroids(i).x)
+          fprintf(stdout, c"%f)\n", centroids(i).y)
+        }
+      }
+      */
+      j+=1
+    }
+
+    gettimeofday(after, null)
+
+    val res =
+      ((((!after).tv_sec - (!before).tv_sec) * 1000) +
+      (((!after).tv_usec - (!before).tv_usec) / 1000)) / executions
+
+    fprintf(stdout, c"da qui %d\n", res)
 
   }
 }
