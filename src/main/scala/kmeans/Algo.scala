@@ -25,11 +25,21 @@ object Algo {
       _iters -= 1
     }
 
+    import scalanative.native._, stdlib._, stdio._
+    var i = 0
+    while (i < n) {
+      fprintf(stdout, c"Centroid [x : %lf, y: %lf]\n", centroids(i).x, centroids(i).y)
+      i+=1
+    }
+
     clusters(xs, centroids)
   }
 
-  def clusters(xs: List[Point], centroids: List[Point]) =
-    (xs groupBy { x => closest(x, centroids) }).values.toList
+  def clusters(xs: List[Point], centroids: List[Point]) = {
+    val ps = xs map ( x => (closest(x, centroids), x) )
+
+    centroids.map(c => ps.filter(_._1 == c).map(_._2) )
+  }
 
   def closest(x: Point, choices: List[Point]) =
     choices minBy { y => dist(x, y) }
